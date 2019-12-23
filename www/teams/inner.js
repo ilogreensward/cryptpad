@@ -1144,6 +1144,7 @@ define([
                         return;
                     }
                     // No error: join successful!
+                    sframeChan.event('EV_SET_HASH', '');
                     var $div = $('div.cp-team-list').empty();
                     refreshList(common, function (content) {
                         $div.append(content);
@@ -1169,7 +1170,6 @@ define([
         var declineData = {};
         nThen(function (waitFor) {
             // Get preview content.
-            var sframeChan = common.getSframeChannel();
             sframeChan.query('Q_ANON_GET_PREVIEW_CONTENT', { seeds: seeds }, waitFor(function (err, json) {
                 if (json && (json.error || !Object.keys(json).length)) {
                     $(errorBlock).text(Messages.team_inviteInvalidLinkError).show();
