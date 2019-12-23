@@ -440,9 +440,10 @@ define([
 
         if (!content.answer) {
             // If they declined the invitation, remove them from the roster (as a pending member)
+            var toRemove = content.link ? content.curve : msg.author;
             try {
                 var module = ctx.store.modules['team'];
-                module.removeFromTeam(teamId, msg.author);
+                module.removeFromTeam(teamId, toRemove);
             } catch (e) { console.error(e); }
         }
 

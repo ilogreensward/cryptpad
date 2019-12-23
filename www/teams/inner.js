@@ -1059,6 +1059,7 @@ define([
         var hashData = Hash.parseTypeHash('invite', hash);
         var password = hashData.password;
         var seeds = InviteInner.deriveSeeds(hashData.key);
+        var sframeChan = common.getSframeChannel();
 
         if (Object.keys(privateData.teams || {}).length >= Constants.MAX_TEAMS_SLOTS) {
             return void cb([
@@ -1096,11 +1097,7 @@ define([
         ]);
         var $inviteDiv = $(inviteDiv);
 
-        $(declineButton).click(function() {
-            
-        });
-
-        var process = function (pw) {
+        var process = function (pw, previewData) {
             $inviteDiv.empty();
             var bytes64;
 
@@ -1122,6 +1119,7 @@ define([
             }).nThen(function (waitFor) {
                 $spinner.text(Messages.team_inviteGetData);
                 APP.module.execCommand('ACCEPT_LINK_INVITATION', {
+                    previewData: previewData,
                     bytes64: bytes64,
                     hash: hash,
                     password: pw,
@@ -1168,6 +1166,7 @@ define([
             });
         };
 
+        var declineData = {};
         nThen(function (waitFor) {
             // Get preview content.
             var sframeChan = common.getSframeChannel();
@@ -1190,6 +1189,9 @@ define([
                 if (json.message) {
                     $div.append(h('div.cp-teams-invite-message', json.message));
                 }
+                declineData.curve = json.curvePublic;
+                declineData.author = json.author;
+                declineData.teamChannel = json.teamChannel;
             }));
         }).nThen(function (waitFor) {
             // If you're logged in, move on to the next nThen
@@ -1214,6 +1216,35 @@ define([
             });
             waitFor.abort();
         }).nThen(function () {
+            // Add decline button
+            if (declineData.curve) {
+                var myData = Util.clone(common.getMetadataMgr().getUserData());
+                myData.displayName = myData.name;
+                delete myData.name;
+                delete myData.uid;
+                delete myData.color;
+                $(declineButton).click(function() {
+                    common.mailbox.sendTo("INVITE_TO_TEAM_ANSWER", {
+                        answer: false,
+                        link: true,
+                        teamChannel: declineData.teamChannel,
+                        curve: declineData.curve,
+                        user: myData
+                    }, {
+                        channel: declineData.author.notifications,
+                        curvePublic: declineData.author.curvePublic
+                    }, function () {
+                        sframeChan.event('EV_SET_HASH', '');
+                        $('div.cp-team-cat-list').click();
+                        var $divLink = $('div.cp-team-link').empty();
+                        if ($divLink.length) {
+                            $divLink.remove();
+                            $('div.cp-team-cat-link').remove();
+                            delete mainCategories.link;
+                        }
+                    });
+                }).css('display', 'inline-block');
+            }
             $div.append($inviteDiv);
         }).nThen(function (waitFor) {
             // If there is no password, move on to the next block
@@ -1224,7 +1255,7 @@ define([
             $(acceptButton).click(function () {
                 var val = $(pwInput).find('input').val();
                 if (!val) { return; }
-                process(val);
+                process(val, declineData);
             });
             $inviteDiv.prepend(h('div.cp-teams-invite-password', [
                 h('p', Messages.team_inviteEnterPassword),
@@ -1234,7 +1265,7 @@ define([
         }).nThen(function () {
             // No password, display the invitation proposal
             $(acceptButton).click(function () {
-                process('');
+                process('', declineData);
             });
         });
         return c;

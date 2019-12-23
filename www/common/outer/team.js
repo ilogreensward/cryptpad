@@ -1192,7 +1192,23 @@ define([
         team.roster.remove([data.curvePublic], function (err) {
             if (err) { return void cb({error: err}); }
             // The user has been removed, send them a notification
-            if (!userData || !userData.notifications) { return cb(); }
+            if (!userData) { return cb(); }
+            // If this is a link, make the link invalid, remove the invite channels
+            if (userData.previewChannel && userData.pending && team.rpc) {
+                var rpc = team.rpc;
+                team.unpin([userData.inviteChannel, userData.previewChannel], function (obj) {
+                    if (obj && obj.error) { console.error(obj.error); }
+                });
+                rpc.removeOwnedChannel(userData.inviteChannel, function (err) {
+                    if (err) { console.error(err); }
+                });
+                rpc.removeOwnedChannel(userData.previewChannel, function (err) {
+                    if (err) { console.error(err); }
+                });
+                return void cb();
+            }
+            // This is a user, if they have a mailbox, send them a notification
+            if (!userData.notifications) { return void cb(); }
             ctx.store.mailbox.sendTo('KICKED_FROM_TEAM', {
                 pending: data.pending,
                 user: Messaging.createData(ctx.store.proxy, false),
@@ -1288,6 +1304,8 @@ define([
         } catch (err) {
             return void cb({ error: "TEAM_NAME_ERR" });
         }
+        var teamEdPublic = Util.find(ctx,
+            ['store', 'proxy', 'teams', teamId, 'keys', 'drive', 'edPublic']);
 
         var message = data.message;
         var name = data.name;
@@ -1318,7 +1336,7 @@ define([
                     initialState: '{}',
                     network: ctx.store.network,
                     metadata: {
-                        owners: [ctx.store.proxy.edPublic, ephemeralKeys.edPublic]
+                        owners: [teamEdPublic, ctx.store.proxy.edPublic, ephemeralKeys.edPublic]
                     }
                 };
                 putOpts.metadata.validateKey = sign.validateKey;
@@ -1326,9 +1344,11 @@ define([
                 // visible with only the invite link
                 var previewContent = {
                     teamName: teamName,
+                    teamChannel: Util.find(ctx.store.proxy, ['teams', teamId, 'channel']),
                     message: message,
                     author: Messaging.createData(ctx.store.proxy, false),
                     displayName: name,
+                    curvePublic: ephemeralKeys.curvePublic
                 };
 
                 var cryptput_config = {
@@ -1359,7 +1379,7 @@ define([
                     initialState: '{}',
                     network: ctx.store.network,
                     metadata: {
-                        owners: [ctx.store.proxy.edPublic, ephemeralKeys.edPublic]
+                        owners: [teamEdPublic, ctx.store.proxy.edPublic, ephemeralKeys.edPublic]
                     }
                 };
                 putOpts.metadata.validateKey = sign.validateKey;
@@ -1440,7 +1460,6 @@ define([
 
             var json = Util.tryParse(val);
             if (!json) { return void cb({ error: "parseError" }); }
-            console.error("JSON", json);
             cb(json);
         }, { // cryptget opts
             network: ctx.store.network,
@@ -1532,10 +1551,10 @@ define([
                 }));
             }));
         }).nThen(function () {
-            var tempRpc = {};
-            initRpc(ctx, tempRpc, inviteContent.ephemeral, function (err) {
+            var ephemeralRpc = {};
+            initRpc(ctx, ephemeralRpc, inviteContent.ephemeral, function (err) {
                 if (err) { return; }
-                var rpc = tempRpc.rpc;
+                var rpc = ephemeralRpc.rpc;
                 if (rosterState.inviteChannel) {
                     rpc.removeOwnedChannel(rosterState.inviteChannel, function (err) {
                         if (err) { console.error(err); }
@@ -1550,7 +1569,23 @@ define([
             // Add the team to our list and join...
             joinTeam(ctx, {
                 team: inviteContent.teamData
-            }, cId, cb);
+            }, cId, function (obj) {
+                cb(obj);
+                // Tell the invitation author that we've accepted the offer
+                if (obj && obj.error && obj.error === 'EINVAL') { return; }
+                var previewData = data.previewData;
+                var myData = Messaging.createData(ctx.store.proxy, false);
+                ctx.store.mailbox.sendTo("INVITE_TO_TEAM_ANSWER", {
+                    answer: true,
+                    link: true,
+                    teamChannel: previewData.teamChannel,
+                    curve: previewData.curve,
+                    user: myData
+                }, {
+                    channel: previewData.author.notifications,
+                    curvePublic: previewData.author.curvePublic
+                });
+            });
         });
     };
 
@@ -1629,8 +1664,25 @@ define([
             }
             var team = ctx.teams[teamId];
             if (!team) { return void console.error("TEAM MODULE ERROR"); }
+            // Make sure the curvePublic we want to remove is a member of the roster
+            var state = team.roster.getState();
+            var element = state.members[curve];
+            if (!element) { return;}
             team.roster.remove([curve], function (err) {
                 if (err && err !== 'NO_CHANGE') { console.error(err); }
+                // If this curvePublic is a link invitation, delete the channels
+                if (element.previewChannel && element.pending && ctx.store.rpc) {
+                    var rpc = ctx.store.rpc;
+                    team.unpin([element.inviteChannel, element.previewChannel], function (obj) {
+                        if (obj && obj.error) { console.error(obj.error); }
+                    });
+                    rpc.removeOwnedChannel(element.inviteChannel, function (err) {
+                        if (err) { console.error(err); }
+                    });
+                    rpc.removeOwnedChannel(element.previewChannel, function (err) {
+                        if (err) { console.error(err); }
+                    });
+                }
             });
 
         };
