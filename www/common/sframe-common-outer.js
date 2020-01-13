@@ -1239,7 +1239,9 @@ define([
 
                 if (burnAfterReading) {
                     Cryptpad.padRpc.onReadyEvent.reg(function () {
+                        console.log(secret);
                         Cryptpad.burnPad({
+                            secret: secret,
                             channel: secret.channel,
                             ownerKey: burnAfterReading
                         });
@@ -1323,6 +1325,8 @@ define([
                         notifications: notifications,
                         curvePublic: curvePublic
                     }));
+    console.log(rtConfig.metadata.mailbox[edPublic]);
+    console.log(Utils.crypto.decrypt(rtConfig.metadata.mailbox[edPublic], true, true));
                 }
                 if (data.expire) {
                     rtConfig.metadata.expire = data.expire;

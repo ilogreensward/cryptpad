@@ -1653,6 +1653,44 @@ define([
         };
 
         // Delete a pad received with a burn after reading URL
+
+        var notifyOwnerPadRemoved = function (data, obj) {
+            var channel = data.channel;
+            console.log(data);
+                console.error(obj);
+                if (obj && obj.error) { return; }
+                if (!obj.mailbox) { return; }
+                var crypto = Crypto.createEncryptor(data.secret.keys);
+                console.log(data.secret.keys);
+                var m = [];
+                try {
+                    if (typeof (obj.mailbox) === "string") {
+                        m.push(crypto.decrypt(obj.mailbox, true, true));
+                    } else {
+                        Object.keys(obj.mailbox).forEach(function (k) {
+                            console.log(obj.mailbox[k]);
+                            m.push(crypto.decrypt(obj.mailbox[k], true, true));
+                        });
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+                var edPublic = store.proxy.edPublic;
+                var myData = Messaging.createData(store.proxy, false);
+                m.forEach(function (k) {
+                    if (k === edPublic) { return; }
+                    var mb = JSON.parse(m[k]);
+                    console.error('send to ', m[k], mb);
+                    store.mailbox.sendTo('OWNED_PAD_REMOVED', {
+                        channel: channel,
+                        user: myData
+                    }, {
+                        channel: mb.notifications,
+                        curvePublic: mb.curvePublic
+                    }, function () {});
+                });
+        };
+
         Store.burnPad = function (clientId, data) {
             var channel = data.channel;
             var ownerKey = Crypto.b64AddSlashes(data.ownerKey || '');
@@ -1665,8 +1703,15 @@ define([
                     edPrivate: Hash.encodeBase64(pair.secretKey)
                 }, function (e, rpc) {
                     if (e) { return void console.error(e); }
-                    rpc.removeOwnedChannel(channel, function (err) {
-                        if (err) { console.error(err); }
+                    Store.getPadMetadata(null, {
+                        channel: channel
+                    }, function (md) {
+                        rpc.removeOwnedChannel(channel, function (err) {
+                            if (err) { return void console.error(err); }
+                            // Notify owners that the pad was removed
+                            console.error(data);
+                            notifyOwnerPadRemoved(data, md);
+                        });
                     });
                 });
             } catch (e) {
