@@ -372,14 +372,17 @@ define([
             });
         });
     };
+    //täällä muutoksia
     var refreshList = function (common, cb) {
         var content = [];
+	var maxslots = MAX_TEAMS_SLOTS+1;
         APP.module.execCommand('LIST_TEAMS', null, function (obj) {
             if (!obj) { return; }
             if (obj.error === "OFFLINE") { return UI.alert(Messages.driveOfflineError); }
             if (obj.error) { return void console.error(obj.error); }
             var list = [];
-            var keys = Object.keys(obj).slice(0,3);
+	    //var keys = Object.keys(obj).slice(0,3);
+            var keys = Object.keys(obj).slice(0,maxslots);
             var slots = '('+Math.min(keys.length, MAX_TEAMS_SLOTS)+'/'+MAX_TEAMS_SLOTS+')';
             for (var i = keys.length; i < MAX_TEAMS_SLOTS; i++) {
                 obj[i] = {
